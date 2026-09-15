@@ -1,0 +1,7 @@
+{
+  "name": "llm-visibility-form",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Intake form for the LLM Visibility Tracker; writes jobs to the GitHub queue.",
+  "engines": { "node": ">=18" }
+}
