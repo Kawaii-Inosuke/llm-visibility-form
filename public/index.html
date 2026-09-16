@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LLM Visibility Tracker — Submit a job</title>
+<title>LLM Visibility Tracker: Submit a job</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -88,7 +88,7 @@
     border:0;border-radius:9px;font-size:15px;font-weight:600;cursor:pointer;
     font-family:inherit;letter-spacing:.01em;transition:background .15s}
   .submit:hover:not(:disabled){background:var(--accent-dk)}
-  .submit:disabled{opacity:.5;cursor:not-allowed}
+  .submit:disabled{background:var(--line);color:var(--mut);cursor:not-allowed}
 
   .msg{padding:12px 14px;border-radius:8px;margin-top:14px;display:none;font-size:13.5px}
   .msg.show{display:block}
@@ -113,12 +113,12 @@
       <p class="sub">Submit prompts to run across AI answer engines. You'll get the results as an Excel file by email.</p>
 
       <div class="sec">
-        <label class="field" for="email">Your email <span class="hint">— where the Excel is sent</span></label>
+        <label class="field" for="email">Your email<span class="hint">, where the Excel is sent</span></label>
         <input type="email" id="email" placeholder="you@company.com" autocomplete="email">
       </div>
 
       <div class="sec">
-        <label class="field">Engines <span class="hint">— all on by default, untick any you don't want</span></label>
+        <label class="field">Engines<span class="hint">, all on by default, untick any you don't want</span></label>
         <div class="engines" id="engines"></div>
       </div>
 
@@ -130,23 +130,23 @@
               <button type="button" data-r="us">USA</button>
               <button type="button" data-r="in" class="on">India</button>
             </div>
-            <div class="vpn" id="vpn" style="display:none">USA runs need the operator's VPN on — it may take a little longer to start.<br>Please inform <b>YASH</b> if it needs to be of USA.</div>
+            <div class="vpn" id="vpn" style="display:none">USA runs need the operator's VPN on, it may take a little longer to start.<br>Please inform <b>YASH</b> if it needs to be of USA.</div>
           </div>
           <div>
-            <label class="field" for="runs">Runs per prompt <span class="hint">— 1 to 10</span></label>
-            <input type="number" id="runs" min="1" max="10" value="5">
+            <label class="field" for="runs">Runs per prompt<span class="hint">, 1 to 10</span></label>
+            <input type="number" id="runs" min="1" max="10" value="1">
           </div>
         </div>
       </div>
 
       <div class="sec">
-        <label class="field">Prompts <span class="hint">— one per line, in order</span></label>
+        <label class="field">Prompts<span class="hint">, one per line, in order</span></label>
         <div id="prompts"></div>
         <button type="button" class="addbtn" id="add">+ Add another prompt</button>
       </div>
 
       <div class="estimate" id="estimate">
-        <span id="estText">—</span>
+        <span id="estText"></span>
         <b id="estTime"></b>
       </div>
 
@@ -226,6 +226,27 @@ engBox.addEventListener("change",recalc);
 $("#runs").addEventListener("input",recalc);
 recalc();
 
+// --- submit button gate: stays disabled until the whole form is valid ---
+function formIsValid(){
+  const email=$("#email").value.trim();
+  const runs=parseInt($("#runs").value,10);
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)
+      && selectedEngines().length>0
+      && filledPrompts().length>0
+      && Number.isInteger(runs) && runs>=1 && runs<=10;
+}
+function updateSubmitState(){
+  const btn=$("#submit");
+  if(btn.textContent!=="Submit job") return;   // mid-submit or already submitted
+  btn.disabled=!formIsValid();
+}
+$("#email").addEventListener("input",updateSubmitState);
+engBox.addEventListener("change",updateSubmitState);
+$("#runs").addEventListener("input",updateSubmitState);
+promptsBox.addEventListener("input",updateSubmitState);          // typing in any prompt
+new MutationObserver(updateSubmitState).observe(promptsBox,{childList:true}); // add/remove prompt
+updateSubmitState();                                             // starts disabled on load
+
 function show(kind,text){
   const m=$("#msg"); m.className="msg show "+kind; m.textContent=text;
 }
@@ -256,7 +277,7 @@ $("#submit").onclick=async ()=>{
     });
     const data=await res.json().catch(()=>({}));
     if(res.ok){
-      show("ok","Submitted — you'll get an email when it's done.");
+      show("ok","Submitted, you'll get an email when it's done.");
       btn.textContent="Submitted"; return;
     }
     show("err", data.error || "Something went wrong. Please try again or tell the operator.");
