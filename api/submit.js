@@ -4,6 +4,35 @@
 
 const ENGINES = ["chatgpt","gemini","claude","perplexity","copilot","ai_overview","ai_mode"];
 
+// Companies: a workbook tab per company, so the name has to be a legal tab name,
+// and a domain with a scheme on it matches nothing. Contract: docs/form-contract.md.
+const MAX_COMPANIES = 15;
+const NAME_BAD = /[\[\]:*?\/\\]/;
+const BARE_HOST = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
+
+// Server backstop for what the form already checks. Returns null, or the reason.
+function validateCompanies(list) {
+  if (!Array.isArray(list) || list.length === 0) return "Add at least one company to track.";
+  if (list.length > MAX_COMPANIES) return `At most ${MAX_COMPANIES} companies per job.`;
+  const seen = new Set();
+  for (const c of list) {
+    if (!c || typeof c !== "object") return "Malformed company entry.";
+    if (typeof c.name !== "string" || !c.name.trim()) return "A company is missing its name.";
+    const name = c.name.trim();
+    if (name.length > 31) return `Company name "${name}" is longer than 31 characters.`;
+    if (NAME_BAD.test(name)) return `Company name "${name}" can't contain [ ] : * ? / \\`;
+    if (seen.has(name.toLowerCase())) return `Duplicate company "${name}".`;
+    seen.add(name.toLowerCase());
+    if (!Array.isArray(c.domains) || c.domains.length === 0)
+      return `Company "${name}" needs a website.`;
+    for (const d of c.domains) {
+      if (typeof d !== "string" || !BARE_HOST.test(d.trim().toLowerCase()))
+        return `Company "${name}" needs a bare domain like truefoundry.com, without https:// or a path.`;
+    }
+  }
+  return null;
+}
+
 function makeJobId() {
   const n = new Date();
   const p = (x, w = 2) => String(x).padStart(w, "0");
@@ -25,6 +54,8 @@ function validate(b) {
   if (!Array.isArray(b.engines) || b.engines.length === 0) return "Pick at least one engine.";
   if (b.engines.some(e => !ENGINES.includes(e))) return "Unknown engine in the list.";
   if (new Set(b.engines).size !== b.engines.length) return "Duplicate engine in the list.";
+  const badCompany = validateCompanies(b.companies);
+  if (badCompany) return badCompany;
   if (!Array.isArray(b.prompts) || b.prompts.length === 0) return "Add at least one prompt.";
   for (const p of b.prompts) {
     if (!p || typeof p.id !== "string" || !p.id.trim()) return "A prompt is missing its id.";
@@ -60,6 +91,10 @@ module.exports = async (req, res) => {
     region: body.region,
     runs_per_prompt: body.runs_per_prompt,
     engines: body.engines,
+    companies: body.companies.map(c => ({
+      name: c.name.trim(),
+      domains: c.domains.map(d => d.trim().toLowerCase()),
+    })),
     prompts: body.prompts.map(p => ({ id: p.id.trim(), prompt: p.prompt.trim() })),
     status: "pending",
     message: null,

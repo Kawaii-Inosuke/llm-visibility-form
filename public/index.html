@@ -76,6 +76,23 @@
     border-radius:8px;padding:10px 15px;cursor:pointer;font-size:13.5px;
     font-family:inherit;font-weight:600;margin-top:4px;transition:border-color .15s,background .15s}
   .addbtn:hover{border-color:var(--accent);background:var(--accent-soft)}
+  .addbtn:disabled{border-color:var(--line);color:var(--mut);
+    background:#fff;cursor:not-allowed;opacity:.55}
+
+  .cohint{color:var(--mut);font-size:12.5px;line-height:1.5;margin:-3px 0 11px}
+  .co{margin-bottom:10px}
+  .co .cogrid{display:flex;gap:11px;align-items:center}
+  .co .cname{flex:0 0 34%;min-width:140px}
+  .co .csite{flex:1 1 auto;min-width:140px}
+  .co button{background:#fff;border:1px solid var(--line);color:var(--mut);
+    border-radius:8px;width:36px;height:40px;flex:0 0 36px;cursor:pointer;font-size:17px;
+    line-height:1;transition:border-color .15s,color .15s}
+  .co button:hover{border-color:#cdd2e3;color:var(--ink)}
+  .co input.bad{border-color:var(--err-line)}
+  .co input.bad:focus{box-shadow:0 0 0 3px rgba(180,35,24,.1)}
+  .coerr{display:none;color:var(--err);font-size:12.5px;margin:6px 0 0 1px}
+  .coerr.show{display:block}
+  @media (max-width:620px){ .co .cogrid{flex-wrap:wrap} .co .cname{flex:1 1 100%} }
 
   .estimate{display:flex;justify-content:space-between;align-items:center;gap:12px;
     background:var(--accent-soft);border:1px solid #dfe1ef;border-radius:8px;
@@ -120,6 +137,13 @@
       <div class="sec">
         <label class="field">Engines<span class="hint">, all on by default, untick any you don't want</span></label>
         <div class="engines" id="engines"></div>
+      </div>
+
+      <div class="sec">
+        <label class="field">Companies to track</label>
+        <p class="cohint">Company name and its website. We'll track when each is mentioned in answers and cited as a source.</p>
+        <div id="companies"></div>
+        <button type="button" class="addbtn" id="addco">+ Add company</button>
       </div>
 
       <div class="sec">
@@ -203,6 +227,93 @@ function addPrompt(val=""){
 $("#add").onclick=()=>{addPrompt();recalc();};
 addPrompt();
 
+// --- companies to track (contract: 1-15, bare-hostname domains, no aliases) ---
+const MAX_COMPANIES = 15;
+const NAME_BAD = /[\[\]:*?\/\\]/;
+const coBox = $("#companies");
+
+// "https://truefoundry.com/pricing?x=1" -> "truefoundry.com". Applied on blur.
+function cleanHost(v){
+  let h=v.trim().replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//,"");  // scheme
+  h=h.replace(/^[^\/?#@]*@/,"");                               // userinfo
+  h=h.split(/[\/?#]/)[0];                                      // path, query, hash
+  h=h.replace(/:\d+$/,"");                                     // port
+  return h.replace(/\.+$/,"").toLowerCase();
+}
+function hostOk(h){
+  return /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(h);
+}
+
+function addCompany(){
+  const row=document.createElement("div"); row.className="co";
+  row.innerHTML=`<div class="cogrid">
+      <input type="text" class="cname" placeholder="TrueFoundry" maxlength="31">
+      <input type="text" class="csite" placeholder="truefoundry.com">
+      <button type="button" title="Remove">&times;</button>
+    </div>
+    <div class="coerr"></div>`;
+  row.querySelector("button").onclick=()=>{
+    if(coBox.children.length>1){ row.remove(); checkCompanies(); updateSubmitState(); }
+  };
+  coBox.appendChild(row);
+}
+$("#addco").onclick=()=>{
+  if(coBox.children.length<MAX_COMPANIES){ addCompany(); checkCompanies(); updateSubmitState(); }
+};
+addCompany();
+
+// Validates every row, paints inline errors on rows the user has already left,
+// and returns the contract-shaped list when the whole section is valid.
+function checkCompanies(){
+  const rows=[...coBox.children];
+  const seen=new Set();
+  const filled=[];
+  let ok=true;
+
+  rows.forEach(row=>{
+    const nameEl=row.querySelector(".cname"), siteEl=row.querySelector(".csite");
+    const name=nameEl.value.trim(), site=siteEl.value.trim();
+    let msg="", field="";
+
+    if(name||site){
+      const host=cleanHost(site);
+      if(!name){ msg="Enter the company name."; field="name"; }
+      else if(name.length>31){ msg="Company name must be 31 characters or fewer."; field="name"; }
+      else if(NAME_BAD.test(name)){ msg="Company name can't contain [ ] : * ? / \\"; field="name"; }
+      else if(seen.has(name.toLowerCase())){ msg="This company is already in the list."; field="name"; }
+      else if(!site){ msg="Enter the website, for example truefoundry.com"; field="site"; }
+      else if(!hostOk(host)){ msg="Enter the website without https:// or a path, for example truefoundry.com"; field="site"; }
+
+      if(msg) ok=false;
+      else { seen.add(name.toLowerCase()); filled.push({name, domains:[host]}); }
+    }
+
+    const shown = row.dataset.touched ? msg : "";
+    const box=row.querySelector(".coerr");
+    box.textContent=shown; box.classList.toggle("show", !!shown);
+    nameEl.classList.toggle("bad", !!shown && field==="name");
+    siteEl.classList.toggle("bad", !!shown && field==="site");
+  });
+
+  if(filled.length<1 || filled.length>MAX_COMPANIES) ok=false;
+  $("#addco").disabled = rows.length>=MAX_COMPANIES;
+  return { ok, companies: ok ? filled : [] };
+}
+
+coBox.addEventListener("input",e=>{
+  if(e.target.closest(".cogrid")){ checkCompanies(); updateSubmitState(); }
+});
+coBox.addEventListener("blur",e=>{                      // capture: blur doesn't bubble
+  const t=e.target;
+  if(!t.classList || !t.closest || !t.closest(".cogrid")) return;
+  if(t.classList.contains("csite")){                    // auto-clean a pasted URL
+    const h=cleanHost(t.value);
+    if(h && h!==t.value.trim()) t.value=h;
+  }
+  t.closest(".co").dataset.touched="1";
+  checkCompanies(); updateSubmitState();
+},true);
+
 function selectedEngines(){
   return [...engBox.querySelectorAll("input:checked")].map(c=>c.value);
 }
@@ -232,6 +343,7 @@ function formIsValid(){
   const runs=parseInt($("#runs").value,10);
   return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)
       && selectedEngines().length>0
+      && checkCompanies().ok
       && filledPrompts().length>0
       && Number.isInteger(runs) && runs>=1 && runs<=10;
 }
@@ -254,11 +366,13 @@ function show(kind,text){
 $("#submit").onclick=async ()=>{
   const email=$("#email").value.trim();
   const engines=selectedEngines();
+  const companies=checkCompanies();
   const prompts=filledPrompts();
   const runs=Math.max(1,Math.min(10,parseInt($("#runs").value)||0));
 
   if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return show("err","Enter a valid email address.");
   if(!engines.length) return show("err","Pick at least one engine.");
+  if(!companies.ok) return show("err","Add 1 to 15 companies, and fix any row flagged below.");
   if(!prompts.length) return show("err","Add at least one prompt.");
 
   const total=engines.length*prompts.length*runs;
@@ -266,6 +380,7 @@ $("#submit").onclick=async ()=>{
 
   const job={
     email, region, runs_per_prompt:runs, engines,
+    companies: companies.companies,
     prompts: prompts.map((p,i)=>({id:"P"+(i+1),prompt:p})),
   };
 
